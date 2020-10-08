@@ -55,7 +55,9 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
+#ifndef __wasi__
 #include <syslog.h>
+#endif
 #endif
 #ifdef EVENT__HAVE_UNISTD_H
 #include <unistd.h>

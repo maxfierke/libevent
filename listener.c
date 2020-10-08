@@ -158,6 +158,11 @@ evconnlistener_new(struct event_base *base,
     evconnlistener_cb cb, void *ptr, unsigned flags, int backlog,
     evutil_socket_t fd)
 {
+#if __wasi__
+	// Fail horribly.
+	return NULL;
+#else
+
 	struct evconnlistener_event *lev;
 
 #ifdef _WIN32
@@ -205,6 +210,7 @@ evconnlistener_new(struct event_base *base,
 	    evconnlistener_enable(&lev->base);
 
 	return &lev->base;
+#endif
 }
 
 struct evconnlistener *
@@ -212,6 +218,11 @@ evconnlistener_new_bind(struct event_base *base, evconnlistener_cb cb,
     void *ptr, unsigned flags, int backlog, const struct sockaddr *sa,
     int socklen)
 {
+#if __wasi__
+	// Fail horribly.
+	return NULL;
+#else
+
 	struct evconnlistener *listener;
 	evutil_socket_t fd;
 	int on = 1;
@@ -264,6 +275,7 @@ evconnlistener_new_bind(struct event_base *base, evconnlistener_cb cb,
 err:
 	evutil_closesocket(fd);
 	return NULL;
+#endif
 }
 
 void

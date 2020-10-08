@@ -1384,6 +1384,9 @@ nameserver_pick(struct evdns_base *base) {
 /* this is called when a namesever socket is ready for reading */
 static void
 nameserver_read(struct nameserver *ns) {
+#ifdef __wasi__
+	return;
+#else
 	struct sockaddr_storage ss;
 	ev_socklen_t addrlen = sizeof(ss);
 	u8 packet[1500];
@@ -1415,12 +1418,16 @@ nameserver_read(struct nameserver *ns) {
 		ns->timedout = 0;
 		reply_parse(ns->base, packet, r);
 	}
+#endif
 }
 
 /* Read a packet from a DNS client on a server port s, parse it, and */
 /* act accordingly. */
 static void
 server_port_read(struct evdns_server_port *s) {
+#ifdef __wasi__
+	return;
+#else
 	u8 packet[1500];
 	struct sockaddr_storage addr;
 	ev_socklen_t addrlen;
@@ -1442,12 +1449,16 @@ server_port_read(struct evdns_server_port *s) {
 		}
 		request_parse(packet, r, s, (struct sockaddr*) &addr, addrlen);
 	}
+#endif
 }
 
 /* Try to write all pending replies on a given DNS server port. */
 static void
 server_port_flush(struct evdns_server_port *port)
 {
+#ifdef __wasi__
+	return;
+#else
 	struct server_request *req = port->pending_replies;
 	ASSERT_LOCKED(port);
 	while (req) {
@@ -1478,6 +1489,7 @@ server_port_flush(struct evdns_server_port *port)
 		log(EVDNS_LOG_WARN, "Error from libevent when adding event for DNS server.");
 		/* ???? Do more? */
 	}
+#endif
 }
 
 /* set if we are waiting for the ability to write to this server. */
@@ -2004,6 +2016,9 @@ overflow:
 int
 evdns_server_request_respond(struct evdns_server_request *req_, int err)
 {
+#ifdef __wasi__
+	return -1;
+#else
 	struct server_request *req = TO_SERVER_REQUEST(req_);
 	struct evdns_server_port *port = req->port;
 	int r = -1;
@@ -2055,6 +2070,7 @@ evdns_server_request_respond(struct evdns_server_request *req_, int err)
 done:
 	EVDNS_UNLOCK(port);
 	return r;
+#endif
 }
 
 /* Free all storage held by RRs in req. */
@@ -2219,6 +2235,9 @@ evdns_request_timeout_callback(evutil_socket_t fd, short events, void *arg) {
 /*   2 other failure */
 static int
 evdns_request_transmit_to(struct request *req, struct nameserver *server) {
+#ifdef __wasi__
+	return 2;
+#else
 	int r;
 	ASSERT_LOCKED(req->base);
 	ASSERT_VALID_REQUEST(req);
@@ -2242,6 +2261,7 @@ evdns_request_transmit_to(struct request *req, struct nameserver *server) {
 	} else {
 		return 0;
 	}
+#endif
 }
 
 /* try to send a request, updating the fields of the request */
@@ -2500,6 +2520,9 @@ evdns_resume(void)
 
 static int
 evdns_nameserver_add_impl_(struct evdns_base *base, const struct sockaddr *address, int addrlen) {
+#ifdef __wasi__
+	return 2;
+#else
 	/* first check to see if we already have this nameserver */
 
 	const struct nameserver *server = base->server_head, *const started_at = base->server_head;
@@ -2595,6 +2618,7 @@ out1:
 	log(EVDNS_LOG_WARN, "Unable to add nameserver %s: error %d",
 	    evutil_format_sockaddr_port_(address, addrbuf, sizeof(addrbuf)), err);
 	return err;
+#endif
 }
 
 /* exported function */
@@ -4659,6 +4683,9 @@ evdns_getaddrinfo_fromhosts(struct evdns_base *base,
     const char *nodename, struct evutil_addrinfo *hints, ev_uint16_t port,
     struct evutil_addrinfo **res)
 {
+#ifdef __wasi__
+	return -1;
+#else
 	int n_found = 0;
 	struct hosts_entry *e;
 	struct evutil_addrinfo *ai=NULL;
@@ -4692,6 +4719,7 @@ out:
 			evutil_freeaddrinfo(ai);
 		return -1;
 	}
+#endif
 }
 
 struct evdns_getaddrinfo_request *
@@ -4700,6 +4728,10 @@ evdns_getaddrinfo(struct evdns_base *dns_base,
     const struct evutil_addrinfo *hints_in,
     evdns_getaddrinfo_cb cb, void *arg)
 {
+#if __wasi__
+	// Fail horribly.
+	return NULL;
+#else
 	struct evdns_getaddrinfo_request *data;
 	struct evutil_addrinfo hints;
 	struct evutil_addrinfo *res = NULL;
@@ -4824,6 +4856,7 @@ evdns_getaddrinfo(struct evdns_base *dns_base,
 		cb(EVUTIL_EAI_FAIL, NULL, arg);
 		return NULL;
 	}
+#endif
 }
 
 void

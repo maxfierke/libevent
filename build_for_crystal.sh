@@ -20,7 +20,8 @@ elif [ "$target" == "wasm32-wasi" ]; then
   export AR="$WASI_SDK_PATH/bin/llvm-ar"
   export RANLIB="$WASI_SDK_PATH/bin/llvm-ranlib"
   export LD="$WASI_SDK_PATH/bin/wasm-ld"
-  export CFLAGS="-DEVENT__HAVE_SIGNAL=0 -DEVENT__HAVE_SIGACTION=0 -D__wasi__=1"
+  export CFLAGS="-D__wasi__=1 -D_WASI_EMULATED_SIGNAL"
+  export LDFLAGS="-lwasi-emulated-signal"
 fi
 
 if [ ! -f "./configure" ]; then
@@ -33,7 +34,9 @@ $CONFIGURE --host wasm32 \
   --disable-thread-support \
   --disable-openssl \
   --disable-malloc-replacement \
-  --disable-samples
+  --disable-samples \
+  --disable-libevent-install \
+  --disable-libevent-regress
 
 $MAKE
 

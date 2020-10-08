@@ -84,8 +84,10 @@
 #include <stdlib.h>
 #include <string.h>
 #ifndef _WIN32
+#ifndef __wasi__
 #include <syslog.h>
-#endif /* !_WIN32 */
+#endif
+#endif
 #include <signal.h>
 #ifdef EVENT__HAVE_UNISTD_H
 #include <unistd.h>
@@ -139,6 +141,9 @@ fake_getnameinfo(const struct sockaddr *sa, size_t salen, char *host,
 	}
 
 	if (host != NULL) {
+#ifdef __wasi__
+		return (-1);
+#else
 		if (flags & NI_NUMERICHOST) {
 			if (strlcpy(host, inet_ntoa(sin->sin_addr),
 			    hostlen) >= hostlen)
@@ -157,6 +162,7 @@ fake_getnameinfo(const struct sockaddr *sa, size_t salen, char *host,
 			else
 				return (0);
 		}
+#endif
 	}
 	return (0);
 }
@@ -1588,6 +1594,7 @@ evhttp_connection_cb(struct bufferevent *bufev, short what, void *arg)
 		goto cleanup;
 	}
 
+#ifndef __wasi__
 	/* Check if the connection completed */
 	if (getsockopt(evcon->fd, SOL_SOCKET, SO_ERROR, (void*)&error,
 		       &errsz) == -1) {
@@ -1596,6 +1603,7 @@ evhttp_connection_cb(struct bufferevent *bufev, short what, void *arg)
 			EV_SOCK_ARG(evcon->fd)));
 		goto cleanup;
 	}
+#endif
 
 	if (error) {
 		event_debug(("%s: connect failed for \"%s:%d\" on "
@@ -3553,6 +3561,7 @@ evhttp_bind_socket_with_handle(struct evhttp *http, const char *address, ev_uint
 	if ((fd = bind_socket(address, port, 1 /*reuse*/)) == -1)
 		return (NULL);
 
+#ifndef __wasi__
 	if (listen(fd, 128) == -1) {
 		serrno = EVUTIL_SOCKET_ERROR();
 		event_sock_warn(fd, "%s: listen", __func__);
@@ -3568,6 +3577,7 @@ evhttp_bind_socket_with_handle(struct evhttp *http, const char *address, ev_uint
 			port));
 		return (bound);
 	}
+#endif
 
 	return (NULL);
 }
@@ -4217,11 +4227,13 @@ evhttp_get_request_connection(
 	char *hostname = NULL, *portname = NULL;
 	struct bufferevent* bev = NULL;
 
+#ifndef __wasi__
 #ifdef EVENT__HAVE_STRUCT_SOCKADDR_UN
 	if (sa->sa_family == AF_UNIX) {
 		struct sockaddr_un *sa_un = (struct sockaddr_un *)sa;
 		sa_un->sun_path[0] = '\0';
 	}
+#endif
 #endif
 
 	name_from_addr(sa, salen, &hostname, &portname);
@@ -4393,6 +4405,7 @@ bind_socket_ai(struct evutil_addrinfo *ai, int reuse)
 			return (-1);
 	}
 
+#ifndef __wasi__
 	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (void *)&on, sizeof(on))<0)
 		goto out;
 	if (reuse) {
@@ -4408,7 +4421,8 @@ bind_socket_ai(struct evutil_addrinfo *ai, int reuse)
 
 	return (fd);
 
- out:
+out:
+#endif
 	serrno = EVUTIL_SOCKET_ERROR();
 	evutil_closesocket(fd);
 	EVUTIL_SET_SOCKET_ERROR(serrno);

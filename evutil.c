@@ -197,10 +197,12 @@ evutil_read_file_(const char *filename, char **content_out, size_t *len_out,
 int
 evutil_socketpair(int family, int type, int protocol, evutil_socket_t fd[2])
 {
-#ifndef _WIN32
-	return socketpair(family, type, protocol, fd);
-#else
+#ifdef _WIN32
 	return evutil_ersatz_socketpair_(family, type, protocol, fd);
+#elif __wasi__
+	return -1;
+#else
+	return socketpair(family, type, protocol, fd);
 #endif
 }
 
@@ -243,6 +245,9 @@ evutil_ersatz_socketpair_(int family, int type, int protocol,
 		return -1;
 	}
 
+#ifdef __wasi__
+	return -1;
+#else
 	listener = socket(AF_INET, type, 0);
 	if (listener < 0)
 		return -1;
@@ -307,6 +312,7 @@ evutil_ersatz_socketpair_(int family, int type, int protocol,
 
 	EVUTIL_SET_SOCKET_ERROR(saved_errno);
 	return -1;
+#endif
 #undef ERR
 }
 
@@ -360,7 +366,7 @@ evutil_fast_socket_nonblocking(evutil_socket_t fd)
 int
 evutil_make_listen_socket_reuseable(evutil_socket_t sock)
 {
-#if defined(SO_REUSEADDR) && !defined(_WIN32)
+#if defined(SO_REUSEADDR) && !defined(_WIN32) && !defined(__wasi__)
 	int one = 1;
 	/* REUSEADDR on Unix means, "don't hang on to this address after the
 	 * listener is closed."  On Windows, though, it means "don't keep other
@@ -375,7 +381,7 @@ evutil_make_listen_socket_reuseable(evutil_socket_t sock)
 int
 evutil_make_listen_socket_reuseable_port(evutil_socket_t sock)
 {
-#if defined __linux__ && defined(SO_REUSEPORT)
+#if defined __linux__ && defined(SO_REUSEPORT) 
 	int one = 1;
 	/* REUSEPORT on Linux 3.9+ means, "Multiple servers (processes or
 	 * threads) can bind to the same port if they each set the option. */
@@ -389,7 +395,7 @@ evutil_make_listen_socket_reuseable_port(evutil_socket_t sock)
 int
 evutil_make_listen_socket_ipv6only(evutil_socket_t sock)
 {
-#if defined(IPV6_V6ONLY)
+#if defined(IPV6_V6ONLY) && !defined(__wasi__)
 	int one = 1;
 	return setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, (void*) &one,
 	    (ev_socklen_t)sizeof(one));
@@ -400,7 +406,7 @@ evutil_make_listen_socket_ipv6only(evutil_socket_t sock)
 int
 evutil_make_tcp_listen_socket_deferred(evutil_socket_t sock)
 {
-#if defined(EVENT__HAVE_NETINET_TCP_H) && defined(TCP_DEFER_ACCEPT)
+#if defined(EVENT__HAVE_NETINET_TCP_H) && defined(TCP_DEFER_ACCEPT) && !defined(__wasi__)
 	int one = 1;
 
 	/* TCP_DEFER_ACCEPT tells the kernel to call defer accept() only after data
@@ -538,6 +544,9 @@ evutil_socket_geterror(evutil_socket_t sock)
 int
 evutil_socket_connect_(evutil_socket_t *fd_ptr, const struct sockaddr *sa, int socklen)
 {
+#ifdef __wasi__
+	return -1;
+#else
 	int made_fd = 0;
 
 	if (*fd_ptr < 0) {
@@ -566,6 +575,7 @@ err:
 		*fd_ptr = -1;
 	}
 	return -1;
+#endif
 }
 
 /* Check whether a socket on which we called connect() is done
@@ -578,8 +588,10 @@ evutil_socket_finished_connecting_(evutil_socket_t fd)
 	int e;
 	ev_socklen_t elen = sizeof(e);
 
+#ifndef __wasi__
 	if (getsockopt(fd, SOL_SOCKET, SO_ERROR, (void*)&e, &elen) < 0)
 		return -1;
+#endif
 
 	if (e) {
 		if (EVUTIL_ERR_CONNECT_RETRIABLE(e))
@@ -753,6 +765,9 @@ done:
 static int
 evutil_check_interfaces(void)
 {
+#ifdef __wasi__
+	return -1;
+#else
 	evutil_socket_t fd = -1;
 	struct sockaddr_in sin, sin_out;
 	struct sockaddr_in6 sin6, sin6_out;
@@ -811,6 +826,7 @@ evutil_check_interfaces(void)
 		evutil_closesocket(fd);
 
 	return 0;
+#endif
 }
 
 /* Internal addrinfo flag.  This one is set when we allocate the addrinfo from
@@ -968,7 +984,7 @@ evutil_getaddrinfo_infer_protocols(struct evutil_addrinfo *hints)
 	}
 }
 
-#if AF_UNSPEC != PF_UNSPEC
+#if !defined(__wasi__) && AF_UNSPEC != PF_UNSPEC
 #error "I cannot build on a system where AF_UNSPEC != PF_UNSPEC"
 #endif
 
@@ -989,6 +1005,9 @@ int
 evutil_getaddrinfo_common_(const char *nodename, const char *servname,
     struct evutil_addrinfo *hints, struct evutil_addrinfo **res, int *portnum)
 {
+#ifdef __wasi__
+	return EVUTIL_EAI_NONAME;
+#else
 	int port = 0;
 	const char *pname;
 
@@ -1100,6 +1119,7 @@ evutil_getaddrinfo_common_(const char *nodename, const char *servname,
 	}
 	*portnum = port;
 	return EVUTIL_EAI_NEED_RESOLVE;
+#endif
 }
 
 #ifdef EVENT__HAVE_GETADDRINFO
@@ -1166,6 +1186,10 @@ static struct evutil_addrinfo *
 addrinfo_from_hostent(const struct hostent *ent,
     int port, const struct evutil_addrinfo *hints)
 {
+#ifdef __wasi__
+	event_warnx("addrinfo_from_hostent: not support on wasi");
+	return NULL;
+#else
 	int i;
 	struct sockaddr_in sin;
 	struct sockaddr_in6 sin6;
@@ -1218,6 +1242,7 @@ addrinfo_from_hostent(const struct hostent *ent,
 	}
 
 	return res;
+#endif
 }
 #endif
 
@@ -1228,6 +1253,7 @@ addrinfo_from_hostent(const struct hostent *ent,
 void
 evutil_adjust_hints_for_addrconfig_(struct evutil_addrinfo *hints)
 {
+#ifndef __wasi__
 	if (!(hints->ai_flags & EVUTIL_AI_ADDRCONFIG))
 		return;
 	if (hints->ai_family != PF_UNSPEC)
@@ -1238,6 +1264,7 @@ evutil_adjust_hints_for_addrconfig_(struct evutil_addrinfo *hints)
 	} else if (!had_ipv4_address && had_ipv6_address) {
 		hints->ai_family = PF_INET6;
 	}
+#endif
 }
 
 #ifdef USE_NATIVE_GETADDRINFO
@@ -1378,6 +1405,9 @@ int
 evutil_getaddrinfo(const char *nodename, const char *servname,
     const struct evutil_addrinfo *hints_in, struct evutil_addrinfo **res)
 {
+#ifdef __wasi__
+	return EVUTIL_EAI_NONAME;
+#else
 #ifdef USE_NATIVE_GETADDRINFO
 	struct evutil_addrinfo hints;
 	int portnum=-1, need_np_hack, err;
@@ -1562,6 +1592,7 @@ evutil_getaddrinfo(const char *nodename, const char *servname,
 	}
 
 	return 0;
+#endif
 #endif
 }
 
@@ -2431,6 +2462,8 @@ evutil_weakrand_seed_(struct evutil_weakrand_state *state, ev_uint32_t seed)
 		seed = (ev_uint32_t)tv.tv_sec + (ev_uint32_t)tv.tv_usec;
 #ifdef _WIN32
 		seed += (ev_uint32_t) _getpid();
+#elif __wasi__
+		seed += 1;
 #else
 		seed += (ev_uint32_t) getpid();
 #endif
@@ -2548,6 +2581,9 @@ evutil_load_windows_system_library_(const TCHAR *library_name)
 evutil_socket_t
 evutil_socket_(int domain, int type, int protocol)
 {
+#ifdef __wasi__
+	return -1;
+#else
 	evutil_socket_t r;
 #if defined(SOCK_NONBLOCK) && defined(SOCK_CLOEXEC)
 	r = socket(domain, type, protocol);
@@ -2573,6 +2609,7 @@ evutil_socket_(int domain, int type, int protocol)
 		}
 	}
 	return r;
+#endif
 }
 
 /* Internal wrapper around 'accept' or 'accept4' to provide Linux-style
@@ -2587,6 +2624,9 @@ evutil_socket_t
 evutil_accept4_(evutil_socket_t sockfd, struct sockaddr *addr,
     ev_socklen_t *addrlen, int flags)
 {
+#ifdef __wasi__
+	return -1;
+#else
 	evutil_socket_t result;
 #if defined(EVENT__HAVE_ACCEPT4) && defined(SOCK_CLOEXEC) && defined(SOCK_NONBLOCK)
 	result = accept4(sockfd, addr, addrlen, flags);
@@ -2616,6 +2656,7 @@ evutil_accept4_(evutil_socket_t sockfd, struct sockaddr *addr,
 		}
 	}
 	return result;
+#endif
 }
 
 /* Internal function: Set fd[0] and fd[1] to a pair of fds such that writes on
