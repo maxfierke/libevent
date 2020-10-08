@@ -154,3 +154,6 @@ rules.ninja
 /*.tar.gz
 
 /.vagrant
+
+# wasi libs
+targets/
